@@ -1,12 +1,14 @@
 {
-  "SessionEnd": [
-    {
-      "hooks": [
-        {
-          "type": "command",
-          "command": "${CLAUDE_PLUGIN_ROOT}/scripts/ingest-session.sh"
-        }
-      ]
-    }
-  ]
+  "hooks": {
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/ingest-session.sh"
+          }
+        ]
+      }
+    ]
+  }
 }
