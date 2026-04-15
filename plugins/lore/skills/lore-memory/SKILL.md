@@ -1,0 +1,68 @@
+---
+name: lore-memory
+description: Access the user's persistent Lore knowledge base — browse the index, read entries, follow wikilinks, and remember new durable facts. Use whenever the user references their long-term memory, asks a question prior context might answer, states a preference or decision worth keeping beyond this session, or says "remember that…".
+---
+
+# Lore Memory
+
+The user has a persistent, compounding knowledge base stored in Lore. It is organized as a wiki: a navigable `_index` catalog plus individual markdown files addressed by a stable `key`. Files cross-reference each other via `[[wikilink]]` style references.
+
+You interact with it through a helper script that wraps the Lore REST API. The script reads the user's stored credentials from `${CLAUDE_PLUGIN_DATA}/config.env`. If the config file is missing, tell the user to run the `lore-setup` skill first and stop.
+
+## When to use this skill
+
+Invoke it proactively when any of these are true:
+
+- The user asks something that prior context they've shared might answer (their preferences, their stack, their projects, their ongoing work).
+- The user says "remember that…", "I decided…", "my X is Y", or otherwise states a durable fact worth keeping.
+- You're about to give a substantive answer and long-term context would materially change it.
+- The user explicitly references "my Lore", "my wiki", "my memory", or similar.
+
+Do **not** invoke it for:
+
+- Trivial throwaway questions (definitions, quick lookups).
+- Anything the user has asked you to keep private or ephemeral.
+- System/tooling issues unrelated to user context.
+
+## Reading the wiki
+
+**Always start with the index.** It is a navigable catalog of every file in the namespace, with keys, titles, and short descriptions:
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/lore.sh" get
+```
+
+From the index, pick the file keys that look relevant to the user's question, and read them one at a time:
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/lore.sh" get <file-key>
+```
+
+Files may reference each other using `[[other-key]]` wikilinks. If reading a file surfaces a wikilink that is clearly relevant to what the user asked, follow it with another `get <other-key>` call. **You are navigating the wiki yourself** — Lore does not do inference for you. Read the actual files, synthesize the answer from what you read, and cite the file keys you used.
+
+Keep traversal proportional to the question. For simple questions, one or two files are usually enough. For substantive questions, follow a few wikilinks deep, but stop once you have enough to answer.
+
+## Remembering new content
+
+When the user shares something worth keeping beyond this session, ingest it:
+
+```bash
+echo 'The content to remember, written as a paragraph or two of markdown.' \
+  | bash "${CLAUDE_PLUGIN_ROOT}/scripts/lore.sh" remember
+```
+
+Guidelines:
+
+- Write the content as **markdown prose**, not JSON, not bullet points of terse fragments. The Lore worker will integrate it into the appropriate wiki files using the LLM — give it something readable.
+- Include context the wiki will need to integrate the content correctly: who said it, what it's about, when (if relevant). For example: `"The user mentioned they prefer TypeScript over Python for new backend services, citing team familiarity and better typing for their domain."`
+- It is **fire-and-forget**. The `remember` call returns immediately with a `202 Accepted`. Do not wait for or expect a structured response.
+- Do not re-ingest the same content twice within a session unless the user explicitly asks.
+- Do not ingest anything the user has asked you to forget, anything marked private, or anything that looks like secrets (API keys, passwords, access tokens).
+
+## Errors
+
+If the script prints an error like `Error: Lore not configured. Run /lore-setup first.`, tell the user to run the `lore-setup` skill and stop. Do not attempt to work around it.
+
+If a `get` call returns a 404 for a specific key, tell the user that key doesn't exist (don't silently substitute another) and suggest re-reading the index.
+
+If a `remember` call fails, tell the user the ingest didn't go through but continue with the conversation — do not retry in a loop.

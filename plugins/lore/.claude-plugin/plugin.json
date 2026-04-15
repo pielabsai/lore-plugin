@@ -1,0 +1,13 @@
+{
+  "name": "lore",
+  "version": "0.1.0",
+  "description": "Persistent, compounding long-term memory for Claude, powered by the Lore API.",
+  "author": {
+    "name": "Pielabs",
+    "email": "hello@pielabs.ai"
+  },
+  "homepage": "https://github.com/pielabsai/lore-plugin",
+  "repository": "https://github.com/pielabsai/lore-plugin",
+  "license": "MIT",
+  "keywords": ["memory", "knowledge-base", "wiki", "lore"]
+}

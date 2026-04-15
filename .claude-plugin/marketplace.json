@@ -1,0 +1,22 @@
+{
+  "name": "lore-plugin",
+  "owner": {
+    "name": "Pielabs",
+    "email": "hello@pielabs.ai"
+  },
+  "metadata": {
+    "description": "Lore: persistent, compounding long-term memory for Claude",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "lore",
+      "source": "./plugins/lore",
+      "description": "Adds persistent long-term memory to Claude via the Lore API. Session transcripts are automatically ingested at session end, and Claude can read/write the wiki mid-session.",
+      "homepage": "https://github.com/pielabsai/lore-plugin",
+      "license": "MIT",
+      "keywords": ["memory", "knowledge-base", "wiki", "lore", "rag"],
+      "category": "productivity"
+    }
+  ]
+}
