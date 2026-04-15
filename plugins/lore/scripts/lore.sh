@@ -22,7 +22,7 @@ source "$CONFIG_FILE"
 : "${LORE_API_KEY:?LORE_API_KEY missing from config}"
 : "${LORE_APP:?LORE_APP missing from config}"
 : "${LORE_NAMESPACE:?LORE_NAMESPACE missing from config}"
-LORE_API_BASE="${LORE_API_BASE:-https://api.lore.dev}"
+LORE_API_BASE="${LORE_API_BASE:-https://lore-api-245179047688.us-central1.run.app}"
 
 BASE="$LORE_API_BASE/v1/apps/$LORE_APP/namespaces/$LORE_NAMESPACE"
 

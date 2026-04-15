@@ -19,7 +19,7 @@ source "$CONFIG_FILE"
 : "${LORE_API_KEY:?}"
 : "${LORE_APP:?}"
 : "${LORE_NAMESPACE:?}"
-LORE_API_BASE="${LORE_API_BASE:-https://api.lore.dev}"
+LORE_API_BASE="${LORE_API_BASE:-https://lore-api-245179047688.us-central1.run.app}"
 
 payload="$(cat)"
 if [[ -z "$payload" ]]; then

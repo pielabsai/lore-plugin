@@ -15,7 +15,7 @@ Every time a Claude session ends, the transcript is automatically posted to your
 You need:
 
 - [Claude Code](https://code.claude.com) (CLI or Desktop, version with plugin support)
-- A [Lore](https://lore.dev) account with at least one app, one namespace, and an API key
+- A Lore account with at least one app, one namespace, and an API key — sign up at [lore--pie-lore.us-central1.hosted.app](https://lore--pie-lore.us-central1.hosted.app)
 - `python3`, `bash`, and `curl` on your PATH (standard on macOS and Linux)
 
 Add the marketplace and install the plugin:
@@ -82,7 +82,7 @@ This removes the plugin's skills and hooks. It does **not** remove your credenti
 ## Privacy
 
 - Your API key lives only in `${CLAUDE_PLUGIN_DATA}/config.env`, never committed or logged.
-- Session transcripts are posted to the Lore API you configure (defaults to `https://api.lore.dev`, overridable via `LORE_API_BASE` in the config file).
+- Session transcripts are posted to the Lore API you configure (defaults to `https://lore-api-245179047688.us-central1.run.app`, the current Cloud Run deployment; dashboard lives separately at `https://lore--pie-lore.us-central1.hosted.app`). Override the API base via `LORE_API_BASE` in the config file.
 - Tool-use / tool-result blocks are stripped from transcripts before ingest — only user and assistant text goes over the wire.
 - The `lore-memory` skill is instructed not to ingest content that looks like secrets (API keys, passwords, tokens) and to respect any "don't remember this" requests from you.
 

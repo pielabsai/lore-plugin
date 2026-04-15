@@ -14,7 +14,7 @@ set -euo pipefail
 : "${LORE_APP:?Set LORE_APP in the environment}"
 : "${LORE_NAMESPACE:?Set LORE_NAMESPACE in the environment}"
 
-LORE_API_BASE="${LORE_API_BASE:-https://api.lore.dev}"
+LORE_API_BASE="${LORE_API_BASE:-https://lore-api-245179047688.us-central1.run.app}"
 
 CONFIG_DIR="${CLAUDE_PLUGIN_DATA:-$HOME/.claude/lore}"
 mkdir -p "$CONFIG_DIR"
