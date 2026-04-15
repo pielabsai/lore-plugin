@@ -2,24 +2,15 @@
 # Lore plugin — SessionEnd hook.
 #
 # Reads the hook payload from stdin (JSON with session_id, transcript_path,
-# reason, etc.), extracts the transcript, formats it as markdown, and POSTs
-# it to the Lore ingest endpoint. Never blocks session exit: any failure is
-# logged to stderr and the script still exits 0.
+# reason, cwd, etc.), extracts the transcript, formats it as markdown, and
+# POSTs it to the Lore ingest endpoint. Never blocks session exit: any
+# failure is logged to stderr and the script still exits 0.
+#
+# Uses the project-local config resolver, starting the walk from the
+# session's `cwd` (reported in the hook payload) so that a session ended
+# from deep inside a project tree still finds the project's .lore.env.
 
 set -uo pipefail
-
-CONFIG_FILE="${CLAUDE_PLUGIN_DATA:-$HOME/.claude/lore}/config.env"
-if [[ ! -f "$CONFIG_FILE" ]]; then
-  # Plugin installed but not configured yet — silently skip.
-  exit 0
-fi
-# shellcheck disable=SC1090
-source "$CONFIG_FILE"
-
-: "${LORE_API_KEY:?}"
-: "${LORE_APP:?}"
-: "${LORE_NAMESPACE:?}"
-LORE_API_BASE="${LORE_API_BASE:-https://lore-api-245179047688.us-central1.run.app}"
 
 payload="$(cat)"
 if [[ -z "$payload" ]]; then
@@ -42,6 +33,17 @@ print(
 )
 PY
 )
+
+# Resolve project-local config, walking up from the session's cwd.
+# shellcheck source=/dev/null
+source "$(dirname "${BASH_SOURCE[0]}")/_resolve_config.sh"
+resolve_lore_config "${cwd:-$PWD}" || true
+
+# If the project isn't configured, silently skip ingest. SessionEnd never
+# nags — the SessionStart hook is the right place to prompt for setup.
+if [[ "${LORE_CONFIG_STATUS:-missing}" != "ok" ]]; then
+  exit 0
+fi
 
 if [[ -z "$transcript_path" || ! -f "$transcript_path" ]]; then
   # No transcript available — nothing to ingest.

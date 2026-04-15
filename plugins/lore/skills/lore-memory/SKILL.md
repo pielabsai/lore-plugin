@@ -7,7 +7,7 @@ description: Access the user's persistent Lore knowledge base — browse the ind
 
 The user has a persistent, compounding knowledge base stored in Lore. It is organized as a wiki: a navigable `_index` catalog plus individual markdown files addressed by a stable `key`. Files cross-reference each other via `[[wikilink]]` style references.
 
-You interact with it through a helper script that wraps the Lore REST API. The script reads the user's stored credentials from `${CLAUDE_PLUGIN_DATA}/config.env`. If the config file is missing, tell the user to run the `lore-setup` skill first and stop.
+You interact with it through a helper script that wraps the Lore REST API. The script reads credentials from the project's `.lore.env` + `.lore.env.local` (walked up from the current working directory — config is **per-project**, so every repo has its own). If the script errors with "Lore not configured for this project" or "no API key set", tell the user to run the `/lore-setup` slash command (or the `lore-setup` skill) in this project and stop.
 
 ## When to use this skill
 

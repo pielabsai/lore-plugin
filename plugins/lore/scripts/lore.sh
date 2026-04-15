@@ -6,23 +6,37 @@
 #   lore.sh get <key>      # returns one file by key
 #   lore.sh remember       # reads markdown from stdin and ingests it (fire-and-forget)
 #
-# Loads credentials from ${CLAUDE_PLUGIN_DATA}/config.env, which is written by
-# setup.sh. Invoked by the `lore-memory` skill via Claude's Bash tool.
+# Loads credentials via the project-local config resolver (walks up from the
+# current working directory looking for .lore.env + .lore.env.local).
+# Invoked by the `lore-memory` skill via Claude's Bash tool.
 
 set -euo pipefail
 
-CONFIG_FILE="${CLAUDE_PLUGIN_DATA:-$HOME/.claude/lore}/config.env"
-if [[ ! -f "$CONFIG_FILE" ]]; then
-  echo "Error: Lore not configured. Run the lore-setup skill first." >&2
-  exit 1
-fi
-# shellcheck disable=SC1090
-source "$CONFIG_FILE"
+# shellcheck source=/dev/null
+source "$(dirname "${BASH_SOURCE[0]}")/_resolve_config.sh"
+resolve_lore_config "${CLAUDE_PROJECT_DIR:-$PWD}" || true
 
-: "${LORE_API_KEY:?LORE_API_KEY missing from config}"
-: "${LORE_APP:?LORE_APP missing from config}"
-: "${LORE_NAMESPACE:?LORE_NAMESPACE missing from config}"
-LORE_API_BASE="${LORE_API_BASE:-https://lore-api-245179047688.us-central1.run.app}"
+case "${LORE_CONFIG_STATUS:-missing}" in
+  ok) ;;
+  missing)
+    echo "Error: Lore not configured for this project. Run /lore-setup to connect it." >&2
+    exit 1
+    ;;
+  key_missing)
+    echo "Error: Lore config found at ${LORE_CONFIG_DIR}/.lore.env but no API key set." >&2
+    echo "Add your key to ${LORE_CONFIG_DIR}/.lore.env.local (export LORE_API_KEY=...) or run /lore-setup." >&2
+    exit 1
+    ;;
+  incomplete)
+    echo "Error: Lore config at ${LORE_CONFIG_DIR}/.lore.env is missing LORE_APP or LORE_NAMESPACE." >&2
+    echo "Re-run /lore-setup to fix it." >&2
+    exit 1
+    ;;
+  *)
+    echo "Error: Lore config resolver returned unknown status '${LORE_CONFIG_STATUS}'." >&2
+    exit 1
+    ;;
+esac
 
 BASE="$LORE_API_BASE/v1/apps/$LORE_APP/namespaces/$LORE_NAMESPACE"
 

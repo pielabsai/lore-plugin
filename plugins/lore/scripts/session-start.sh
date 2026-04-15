@@ -1,40 +1,51 @@
 #!/usr/bin/env bash
 # Lore plugin — SessionStart hook.
 #
-# Two responsibilities, both emitted via hookSpecificOutput.additionalContext:
+# Three modes, selected by the project-local config resolver:
 #
-#   1. If the plugin is not yet configured, inject a nudge telling Claude to
-#      proactively offer the `lore-setup` skill on the user's first real turn.
+#   1. missing       — no .lore.env found walking up from the workspace.
+#                      Inject a nudge telling Claude to proactively offer
+#                      /lore-setup on the user's next substantive message.
 #
-#   2. If the plugin IS configured, fetch the namespace `_index` and inject it
-#      as the session's initial memory context. This gives Claude the wiki's
-#      navigable catalog from turn 1 — no lazy round-trip needed before the
-#      first substantive answer. Fire-and-forget with a short hard timeout;
-#      any failure is silent and never blocks session start.
+#   2. key_missing   — .lore.env exists (team config is committed) but
+#                      .lore.env.local is missing or empty. Inject a precise
+#                      nudge telling the user exactly which file to create
+#                      and which env var to set. This is the "teammate just
+#                      cloned the repo" path.
 #
-# Opt-out: set LORE_PRELOAD_INDEX=0 in config.env to disable preload.
+#   3. ok            — everything resolved. Fetch the namespace `_index` and
+#                      inject it as additionalContext so the wiki's table of
+#                      contents is available from turn 1. Hard 3s timeout,
+#                      silent on any failure — never blocks session start.
+#
+# Opt-out: set LORE_PRELOAD_INDEX=0 in .lore.env to disable preload.
 # Tuning:  set LORE_PRELOAD_INDEX_MAX_BYTES (default 8192) to change the cap.
 
 set -uo pipefail
 
-CONFIG_FILE="${CLAUDE_PLUGIN_DATA:-$HOME/.claude/lore}/config.env"
-
 # Read and discard stdin so we don't leave the hook payload buffered.
 cat >/dev/null 2>&1 || true
 
-# ---------- not-yet-configured: setup nudge ----------
+# shellcheck source=/dev/null
+source "$(dirname "${BASH_SOURCE[0]}")/_resolve_config.sh"
 
-if [[ ! -f "$CONFIG_FILE" ]]; then
-  python3 - <<'PY'
+# Start walk-up from CLAUDE_PROJECT_DIR (hook-provided workspace) if set.
+resolve_lore_config "${CLAUDE_PROJECT_DIR:-$PWD}" || true
+
+case "${LORE_CONFIG_STATUS:-missing}" in
+  missing)
+    python3 - <<'PY'
 import json
 message = (
-    "The Lore plugin is installed but not yet connected to a Lore account. "
+    "The Lore plugin is installed but this project is not configured. "
     "When the user sends their next substantive message, proactively offer "
-    "to run the `lore-setup` skill to connect it. The setup flow will ask "
-    "for their App ID, Namespace ID, and API key, then optionally configure "
-    "a namespace schema and seed the wiki from recent GitHub PRs in the "
-    "current workspace. Do not interrupt a trivial greeting, but do bring "
-    "it up as soon as the user asks for anything substantive."
+    "to run the `/lore-setup` slash command (or the `lore-setup` skill) to "
+    "connect this project to Lore. The setup flow will ask for their App ID, "
+    "Namespace ID, and API key, then write a committed `.lore.env` (app + "
+    "namespace, shared with the team) and a gitignored `.lore.env.local` "
+    "(API key, per-developer) at the project root. Do not interrupt a "
+    "trivial greeting, but do bring it up as soon as the user asks for "
+    "anything substantive."
 )
 print(json.dumps({
     "hookSpecificOutput": {
@@ -43,20 +54,67 @@ print(json.dumps({
     }
 }))
 PY
-  exit 0
-fi
+    exit 0
+    ;;
+
+  key_missing)
+    # Team config is committed but this developer hasn't added their key yet.
+    CONFIG_DIR="$LORE_CONFIG_DIR" \
+    LORE_APP="${LORE_APP:-}" \
+    LORE_NAMESPACE="${LORE_NAMESPACE:-}" \
+    python3 - <<'PY'
+import json, os
+config_dir = os.environ.get("CONFIG_DIR", "")
+app = os.environ.get("LORE_APP", "")
+ns = os.environ.get("LORE_NAMESPACE", "")
+message = (
+    f"This project has a committed Lore config at `{config_dir}/.lore.env` "
+    f"(app=`{app}`, namespace=`{ns}`), but no API key has been configured "
+    f"on this machine yet — `.lore.env.local` is missing. On the user's "
+    f"next substantive message, proactively offer to run the `/lore-setup` "
+    f"slash command to finish the per-developer setup (it only needs their "
+    f"API key; the app and namespace are already committed). Alternatively, "
+    f"they can create `{config_dir}/.lore.env.local` manually with a single "
+    f"line: `export LORE_API_KEY=...`. Do not interrupt a trivial greeting."
+)
+print(json.dumps({
+    "hookSpecificOutput": {
+        "hookEventName": "SessionStart",
+        "additionalContext": message,
+    }
+}))
+PY
+    exit 0
+    ;;
+
+  incomplete)
+    # .lore.env exists but is missing LORE_APP or LORE_NAMESPACE — probably
+    # a hand-edited or half-written file. Point the user at re-running setup.
+    CONFIG_DIR="$LORE_CONFIG_DIR" python3 - <<'PY'
+import json, os
+config_dir = os.environ.get("CONFIG_DIR", "")
+message = (
+    f"The Lore config at `{config_dir}/.lore.env` is incomplete — it's "
+    f"missing either `LORE_APP` or `LORE_NAMESPACE`. On the user's next "
+    f"substantive message, offer to re-run `/lore-setup` to fix it."
+)
+print(json.dumps({
+    "hookSpecificOutput": {
+        "hookEventName": "SessionStart",
+        "additionalContext": message,
+    }
+}))
+PY
+    exit 0
+    ;;
+
+  ok) ;;  # fall through to preload
+  *)  exit 0 ;;
+esac
 
 # ---------- configured: preload the namespace index ----------
 
-# shellcheck disable=SC1090
-source "$CONFIG_FILE"
-
-: "${LORE_API_KEY:?}"
-: "${LORE_APP:?}"
-: "${LORE_NAMESPACE:?}"
-LORE_API_BASE="${LORE_API_BASE:-https://lore-api-245179047688.us-central1.run.app}"
-
-# Opt-out: any of 0/false/no disables preload. Default is on.
+# Opt-out: any of 0/false/no/off disables preload. Default is on.
 preload="${LORE_PRELOAD_INDEX:-1}"
 case "$preload" in
   0|false|no|off) exit 0 ;;

@@ -18,18 +18,30 @@ LIMIT="${1:-500}"
 
 # --- preflight -----------------------------------------------------------------
 
-CONFIG_FILE="${CLAUDE_PLUGIN_DATA:-$HOME/.claude/lore}/config.env"
-if [[ ! -f "$CONFIG_FILE" ]]; then
-  echo "Error: Lore not configured. Run the lore-setup skill first." >&2
-  exit 1
-fi
-# shellcheck disable=SC1090
-source "$CONFIG_FILE"
+# shellcheck source=/dev/null
+source "$(dirname "${BASH_SOURCE[0]}")/_resolve_config.sh"
+resolve_lore_config "${CLAUDE_PROJECT_DIR:-$PWD}" || true
 
-: "${LORE_API_KEY:?LORE_API_KEY missing from config}"
-: "${LORE_APP:?LORE_APP missing from config}"
-: "${LORE_NAMESPACE:?LORE_NAMESPACE missing from config}"
-LORE_API_BASE="${LORE_API_BASE:-https://lore-api-245179047688.us-central1.run.app}"
+case "${LORE_CONFIG_STATUS:-missing}" in
+  ok) ;;
+  missing)
+    echo "Error: Lore not configured for this project. Run /lore-setup first." >&2
+    exit 1
+    ;;
+  key_missing)
+    echo "Error: Lore config found at ${LORE_CONFIG_DIR}/.lore.env but no API key set." >&2
+    echo "Add your key to ${LORE_CONFIG_DIR}/.lore.env.local or run /lore-setup." >&2
+    exit 1
+    ;;
+  incomplete)
+    echo "Error: Lore config at ${LORE_CONFIG_DIR}/.lore.env is incomplete. Re-run /lore-setup." >&2
+    exit 1
+    ;;
+  *)
+    echo "Error: Lore config resolver returned unknown status '${LORE_CONFIG_STATUS}'." >&2
+    exit 1
+    ;;
+esac
 
 for bin in git gh jq curl python3; do
   if ! command -v "$bin" >/dev/null 2>&1; then
