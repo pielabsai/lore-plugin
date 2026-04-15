@@ -26,19 +26,31 @@ Do **not** invoke it for:
 
 ## Reading the wiki
 
-**Always start with the index.** It is a navigable catalog of every file in the namespace, with keys, titles, and short descriptions:
+### Start with the index
+
+The namespace `_index` is a navigable catalog of every file, with keys, titles, and short descriptions. **In most sessions it has already been pre-loaded for you as `additionalContext` by the `SessionStart` hook** — look for a block titled "Lore wiki index for `<app>/<namespace>`" at the top of the session context. If you see it, use it directly; do **not** call `lore.sh get` redundantly.
+
+If the preamble is absent (older sessions, or the hook failed at session start), fetch the index yourself:
 
 ```bash
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/lore.sh" get
 ```
 
-From the index, pick the file keys that look relevant to the user's question, and read them one at a time:
+This returns clean markdown — the content of `_index`, not an API envelope. You can also re-fetch it explicitly during a long session if you have reason to believe another session has ingested new content and the preamble has gone stale.
+
+### Read individual files by key
+
+From the index, pick file keys that look relevant to the user's question and read them one at a time:
 
 ```bash
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/lore.sh" get <file-key>
 ```
 
-Files may reference each other using `[[other-key]]` wikilinks. If reading a file surfaces a wikilink that is clearly relevant to what the user asked, follow it with another `get <other-key>` call. **You are navigating the wiki yourself** — Lore does not do inference for you. Read the actual files, synthesize the answer from what you read, and cite the file keys you used.
+This returns a JSON object with `key`, `type`, `title`, `tags`, `content`, `inbound_count`, and a `backlinks` array of files that link **to** this one. The `content` field is the file body as markdown; `backlinks` is the graph edge data you use for navigation.
+
+### Navigate the graph
+
+Files reference each other with `[[other-key]]` wikilinks inside their `content`, and each file you read also comes with an explicit `backlinks` array — **both directions are available to you.** If reading a file surfaces a wikilink or a backlink that is clearly relevant to what the user asked, follow it with another `get <other-key>` call. **You are navigating the wiki yourself** — Lore does not do inference for you. Read the actual files, synthesize the answer from what you read, and cite the file keys you used.
 
 Keep traversal proportional to the question. For simple questions, one or two files are usually enough. For substantive questions, follow a few wikilinks deep, but stop once you have enough to answer.
 

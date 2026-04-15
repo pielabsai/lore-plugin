@@ -31,10 +31,39 @@ case "$cmd" in
   get)
     key="${2:-}"
     if [[ -z "$key" ]]; then
-      # No key → return the index.
-      curl -sS -f -H "Authorization: Bearer $LORE_API_KEY" "$BASE/index"
+      # No key → return the namespace index as clean markdown.
+      #
+      # The Lore API wraps every response in an envelope:
+      #   {"data": {"content": "..."}, "meta": {...}, "errors": [...]}
+      # We extract `data.content` so the caller sees raw markdown, not JSON.
+      resp=$(curl -sS -f -H "Authorization: Bearer $LORE_API_KEY" "$BASE/index")
+      RESP="$resp" python3 - <<'PY'
+import json, os, sys
+try:
+    r = json.loads(os.environ["RESP"])
+except Exception:
+    sys.stderr.write("Error: unparseable response from Lore index endpoint\n")
+    sys.exit(1)
+data = (r.get("data") or {}) if isinstance(r, dict) else {}
+sys.stdout.write(data.get("content", "") or "")
+PY
     else
-      curl -sS -f -H "Authorization: Bearer $LORE_API_KEY" "$BASE/files/$key"
+      # Single file: return the full file payload (content + title + backlinks
+      # + metadata) as pretty-printed JSON so Claude can pull both the body and
+      # the backlinks for graph navigation.
+      resp=$(curl -sS -f -H "Authorization: Bearer $LORE_API_KEY" "$BASE/files/$key")
+      RESP="$resp" python3 - <<'PY'
+import json, os, sys
+try:
+    r = json.loads(os.environ["RESP"])
+except Exception:
+    sys.stderr.write("Error: unparseable response from Lore file endpoint\n")
+    sys.exit(1)
+data = r.get("data") if isinstance(r, dict) else None
+if not isinstance(data, dict):
+    data = r if isinstance(r, dict) else {}
+print(json.dumps(data, indent=2, ensure_ascii=False))
+PY
     fi
     ;;
   remember)

@@ -8,7 +8,7 @@ Every time a Claude session ends, the transcript is automatically posted to your
 
 - **`lore-memory` skill** — Claude auto-invokes this when the conversation references your long-term memory, asks a question prior context might answer, or states a durable fact worth keeping. It reads the wiki's `_index`, follows `[[wikilinks]]` between files, and calls `remember` to ingest new content.
 - **`lore-setup` skill** — three-phase interactive connect flow: (1) credentials, (2) namespace schema addendum tailored to what you want remembered, (3) optional seeding from the last N GitHub PRs in the current workspace. Also available as the `/lore-setup` slash command.
-- **`SessionStart` hook** — if the plugin is installed but not yet connected, nudges Claude to proactively offer `/lore-setup` on your first substantive message. Silent once configured.
+- **`SessionStart` hook** — once the plugin is connected, pre-loads your namespace `_index` into Claude's session context on every session start so the wiki's table of contents is available from turn 1 without a lazy round-trip. If the plugin isn't connected yet, it instead nudges Claude to proactively offer `/lore-setup` on your first substantive message. Capped at 8 KB of index content by default (tunable); fails silently on a 3-second timeout so it never blocks session start.
 - **`SessionEnd` hook** — auto-ingests every session transcript, fire-and-forget. No action required from you.
 
 ## Install
@@ -58,8 +58,9 @@ After that, just use Claude normally. Your sessions will be ingested automatical
 │  Claude Code session             │
 │                                  │
 │  SessionStart                    │
-│   ↳ session-start.sh             │── nudges Claude to run /lore-setup
-│      (if not yet configured)     │   on the first substantive turn
+│   ↳ session-start.sh             │── GET /index (preload, ≤8KB)  ▶
+│      (configured: preload index) │   injected as additionalContext
+│      (unconfigured: nudge)       │
 │                                  │
 │  ┌────────────────────────────┐  │
 │  │ /lore-setup  (skill)       │  │                         Lore REST API
@@ -82,8 +83,27 @@ After that, just use Claude normally. Your sessions will be ingested automatical
 - **Setup** is driven by the `lore-setup` skill and the `/lore-setup` slash command. `setup.sh` writes credentials to `${CLAUDE_PLUGIN_DATA}/config.env` and verifies them; `set-schema.sh` GETs/PUTs the per-namespace schema addendum (raw markdown body); `ingest-github-prs.sh` uses `gh` + `jq` to fetch PRs and POST them one-by-one to `/ingest` with `kind=github-pr` metadata.
 - **Reads/writes mid-session** go through `plugins/lore/scripts/lore.sh`, which reads credentials from `${CLAUDE_PLUGIN_DATA}/config.env` and hits the Lore REST API with your API key in the `Authorization` header.
 - **Auto-ingest** runs in `plugins/lore/scripts/ingest-session.sh` on `SessionEnd`. It reads the transcript file the hook payload points at, formats user/assistant turns as markdown (ignoring tool-use noise), and POSTs it to `/v1/apps/{app}/namespaces/{ns}/ingest`.
-- **The `SessionStart` hook** (`session-start.sh`) checks for `config.env`; if it's missing, it returns a `hookSpecificOutput` message that tells Claude to proactively offer `/lore-setup` on the next real turn. Once configured, it exits silently and adds zero context.
+- **The `SessionStart` hook** (`session-start.sh`) has two modes. If `config.env` is missing, it returns a `hookSpecificOutput` message telling Claude to proactively offer `/lore-setup` on the next real turn. If `config.env` is present, it fetches `GET /v1/apps/{app}/namespaces/{ns}/index` with a hard 3-second timeout, extracts the markdown from the API envelope, truncates at ~8 KB to the last full line, wraps it in a short preamble explaining how to navigate the wiki, and injects the whole thing as `additionalContext` so Claude has the table of contents from turn 1. Any failure (timeout, non-2xx, empty namespace) exits silently — it never blocks session start.
 - **Nothing is stored locally beyond your credentials** (in `${CLAUDE_PLUGIN_DATA}/config.env`, mode `600`). The wiki lives on Lore's servers.
+
+## Tuning the SessionStart index preload
+
+By default, every session starts with up to 8 KB of your namespace's `_index` injected as `additionalContext`. This is the right default for most users — Claude has immediate, zero-round-trip awareness of the wiki — but it does cost a small, fixed chunk of the context window on every session, whether or not memory is relevant.
+
+You can adjust or disable it by editing `${CLAUDE_PLUGIN_DATA:-$HOME/.claude/lore}/config.env` and adding either of these lines:
+
+```bash
+# Opt out entirely — Claude will still access the wiki lazily via the
+# lore-memory skill, just without the preamble.
+export LORE_PRELOAD_INDEX=0
+
+# Keep preload on but change the byte cap on injected content.
+# Default is 8192 (8 KB). Try 4096 for a tighter budget, or 16384 for a
+# larger cap if your index is big and you want more of it in-context.
+export LORE_PRELOAD_INDEX_MAX_BYTES=16384
+```
+
+Truncation happens on the *index content*, not the wrapping preamble or preamble+content together, and always backs off to the last complete newline so you never see a mid-line cut. When truncation triggers, the injected context ends with a one-line footer telling Claude it can fetch the full index via `lore.sh get` if it needs more.
 
 ## Reconfiguring
 

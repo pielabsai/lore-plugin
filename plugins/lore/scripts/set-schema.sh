@@ -31,8 +31,10 @@ BASE="$LORE_API_BASE/v1/apps/$LORE_APP/namespaces/$LORE_NAMESPACE"
 cmd="${1:-}"
 case "$cmd" in
   get)
-    # Endpoint returns 200 with {"content": "..."} even when empty. Pull the
-    # content field out so callers can just read the raw markdown on stdout.
+    # Endpoint returns 200 even when empty. Responses are wrapped in the
+    # standard Lore envelope:
+    #   {"data": {"content": "..."}, "meta": {...}, "errors": [...]}
+    # We extract `data.content` so the caller sees raw markdown on stdout.
     tmp=$(mktemp)
     code=$(curl -sS -o "$tmp" -w '%{http_code}' \
       -H "Authorization: Bearer $LORE_API_KEY" \
@@ -41,8 +43,15 @@ case "$cmd" in
       2*)
         RESP_FILE="$tmp" python3 - <<'PY'
 import json, os, sys
-with open(os.environ["RESP_FILE"], "r") as f:
-    data = json.load(f)
+try:
+    with open(os.environ["RESP_FILE"], "r") as f:
+        r = json.load(f)
+except Exception:
+    sys.stderr.write("Error: unparseable response from schema-addendum GET\n")
+    sys.exit(1)
+data = r.get("data") if isinstance(r, dict) else None
+if not isinstance(data, dict):
+    data = r if isinstance(r, dict) else {}
 sys.stdout.write(data.get("content", "") or "")
 PY
         rm -f "$tmp"
