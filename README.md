@@ -1,8 +1,8 @@
 # lore-plugin
 
-A Claude Code plugin that gives Claude persistent, compounding long-term memory via [Lore](https://lore.dev).
+A Lore plugin bundle for both Claude Code and Codex that provides persistent, compounding long-term memory via [Lore](https://lore.dev).
 
-Every time a Claude session ends, the transcript is automatically posted to your Lore namespace, where an LLM worker integrates it into a self-maintaining wiki. Mid-session, Claude can read from and write to that wiki to answer questions with context it has seen before.
+On Claude Code, every session ends with an automatic transcript ingest. On Codex, the plugin offers the same setup and memory skills, plus an optional hook install that preloads the Lore index at session start and ingests each completed user/assistant turn.
 
 **Configuration is per-project.** Every repo that wants Lore memory has its own `.lore.env` (committed, contains app + namespace) and `.lore.env.local` (gitignored, contains your API key). There is no global config. Teammates cloning a configured repo only need to run `/lore-setup` once to add their own API key — the app/namespace wiring is inherited from git.
 
@@ -12,14 +12,17 @@ Every time a Claude session ends, the transcript is automatically posted to your
 - **`lore-setup` skill** — three-phase interactive connect flow: (1) credentials, (2) namespace schema addendum tailored to what you want remembered, (3) optional seeding from the last N GitHub PRs in the current workspace. Also available as the `/lore-setup` slash command. Handles three scenarios automatically: fresh project, teammate onboarding an existing repo, and reconfiguring a project that's already set up.
 - **`SessionStart` hook** — once the project is configured, pre-loads your namespace `_index` into Claude's session context on every session start so the wiki's table of contents is available from turn 1 without a lazy round-trip. If the current project isn't configured yet (or your `.lore.env.local` is missing an API key), it instead nudges Claude to proactively offer `/lore-setup` on your first substantive message. Capped at 8 KB of index content by default (tunable); fails silently on a 3-second timeout so it never blocks session start.
 - **`SessionEnd` hook** — auto-ingests every session transcript for configured projects, fire-and-forget. No action required from you. Skips silently in unconfigured projects.
+- **Codex variant** — a Codex plugin manifest, Codex-specific `lore-memory` and `lore-setup` skills, and a hook installer that merges Lore's `SessionStart`, `UserPromptSubmit`, and `Stop` hooks into `~/.codex/hooks.json`.
 
 ## Install
 
 You need:
 
-- [Claude Code](https://code.claude.com) (CLI or Desktop, version with plugin support)
+- [Claude Code](https://code.claude.com) or Codex
 - A Lore account with at least one app, one namespace, and an API key — sign up at [lore--pie-lore.us-central1.hosted.app](https://lore--pie-lore.us-central1.hosted.app)
 - `python3`, `bash`, `curl`, and `git` on your PATH (standard on macOS and Linux)
+
+### Claude Code
 
 Add the marketplace and install the plugin:
 
@@ -54,6 +57,38 @@ After that, just use Claude normally in this project. Sessions in this repo will
 Run `/lore-setup` again in any **other** project you want Lore memory for — each one gets its own `.lore.env` + `.lore.env.local`. Projects you never run setup in simply don't use Lore.
 
 > **Optional for phase 3:** [`gh`](https://cli.github.com) (authenticated via `gh auth login`) and `jq`. If either is missing, Claude will skip PR seeding and tell you so — everything else still works.
+
+### Codex
+
+Codex support lives alongside the Claude plugin in this repo:
+
+- Codex plugin manifest: `plugins/lore/.codex-plugin/plugin.json`
+- Codex skills: `plugins/lore/codex-skills/`
+- Codex repo marketplace: `.agents/plugins/marketplace.json`
+
+Install the plugin from this repo's Codex marketplace, then install Lore's optional hooks:
+
+```bash
+bash plugins/lore/scripts/install-codex-hooks.sh
+```
+
+That command merges Lore hook entries into `~/.codex/hooks.json` without removing any unrelated hooks you already have.
+
+Codex hooks are currently documented by OpenAI as **under development** and controlled by `features.codex_hooks`, so make sure your `~/.codex/config.toml` includes:
+
+```toml
+[features]
+codex_hooks = true
+```
+
+Once the plugin is installed and hooks are enabled:
+
+- use the `lore-setup` skill to connect the current project to Lore
+- use the `lore-memory` skill whenever you want Codex to read or remember durable context
+- Lore will preload the namespace index on `SessionStart`
+- Lore will ingest each completed user/assistant turn on `Stop`
+
+Codex does **not** currently expose a `SessionEnd` hook, so the Codex variant ingests turn-by-turn instead of session-by-session.
 
 ## Teammate onboarding
 
@@ -140,6 +175,7 @@ Specifics:
 - **Reads/writes mid-session** go through `plugins/lore/scripts/lore.sh`, which resolves config via walk-up and hits the Lore REST API with your API key in the `Authorization` header.
 - **Auto-ingest** runs in `plugins/lore/scripts/ingest-session.sh` on `SessionEnd`. The hook payload tells us the session's `cwd`, so the resolver walks up from there. The script reads the transcript file the hook payload points at, formats user/assistant turns as markdown (ignoring tool-use noise), and POSTs it to `/v1/apps/{app}/namespaces/{ns}/ingest`.
 - **The `SessionStart` hook** (`session-start.sh`) resolves the project config and picks one of three behaviors based on the status. On `ok`, it fetches `GET /index` with a hard 3-second timeout, extracts the markdown from the API envelope, truncates at ~8 KB to the last full line, wraps it in a short preamble, and injects it as `additionalContext`. Any failure (timeout, non-2xx, empty namespace) exits silently — it never blocks session start.
+- **Codex turn ingest** uses `codex-user-prompt-submit.sh` + `codex-stop.sh`. The first stores the current user prompt keyed by `session_id` + `turn_id`; the second pairs it with `last_assistant_message` at `Stop` time and POSTs that turn to Lore. This is the Codex fallback for the missing `SessionEnd` hook.
 - **Nothing lives in your home directory.** The plugin does not create or use any files under `~/.claude/lore`. Credentials are 100% per-project, in files you can see in `ls` at each repo root.
 
 ## Tuning the SessionStart index preload
@@ -184,6 +220,8 @@ rm -f .lore.env .lore.env.local
 ```
 
 This removes the plugin's skills and hooks. It does **not** remove your per-project `.lore.env` / `.lore.env.local` files or anything on the Lore server — those stay behind on disk for you to delete (or keep, if you plan to reinstall later).
+
+To remove the Codex hook entries later, delete the Lore entries from `~/.codex/hooks.json` manually. The installer is additive and never removes unrelated hooks.
 
 ## Privacy
 

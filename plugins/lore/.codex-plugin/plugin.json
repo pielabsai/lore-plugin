@@ -1,0 +1,30 @@
+{
+  "name": "lore",
+  "version": "0.4.0",
+  "description": "Persistent, compounding long-term memory for Codex, powered by the Lore API.",
+  "author": {
+    "name": "Pielabs",
+    "email": "hello@pielabs.ai",
+    "url": "https://pielabs.ai"
+  },
+  "homepage": "https://github.com/pielabsai/lore-plugin",
+  "repository": "https://github.com/pielabsai/lore-plugin",
+  "license": "MIT",
+  "keywords": ["memory", "knowledge-base", "wiki", "lore", "codex"],
+  "skills": "./codex-skills/",
+  "interface": {
+    "displayName": "Lore",
+    "shortDescription": "Persistent long-term memory for Codex",
+    "longDescription": "Project-scoped Lore memory for Codex, with setup and wiki navigation skills plus optional lifecycle hooks for preload and turn ingest.",
+    "developerName": "Pielabs",
+    "category": "Productivity",
+    "capabilities": ["Read", "Write"],
+    "websiteURL": "https://github.com/pielabsai/lore-plugin",
+    "privacyPolicyURL": "https://github.com/pielabsai/lore-plugin",
+    "termsOfServiceURL": "https://github.com/pielabsai/lore-plugin",
+    "defaultPrompt": [
+      "Use Lore to remember durable facts from this project.",
+      "Use Lore to answer questions from my long-term project memory."
+    ]
+  }
+}

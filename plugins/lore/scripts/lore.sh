@@ -8,28 +8,28 @@
 #
 # Loads credentials via the project-local config resolver (walks up from the
 # current working directory looking for .lore.env + .lore.env.local).
-# Invoked by the `lore-memory` skill via Claude's Bash tool.
+# Invoked by the `lore-memory` skill from Claude Code or Codex.
 
 set -euo pipefail
 
 # shellcheck source=/dev/null
 source "$(dirname "${BASH_SOURCE[0]}")/_resolve_config.sh"
-resolve_lore_config "${CLAUDE_PROJECT_DIR:-$PWD}" || true
+resolve_lore_config "${CODEX_PROJECT_DIR:-${CLAUDE_PROJECT_DIR:-$PWD}}" || true
 
 case "${LORE_CONFIG_STATUS:-missing}" in
   ok) ;;
   missing)
-    echo "Error: Lore not configured for this project. Run /lore-setup to connect it." >&2
+    echo "Error: Lore not configured for this project. Run the lore-setup skill to connect it." >&2
     exit 1
     ;;
   key_missing)
     echo "Error: Lore config found at ${LORE_CONFIG_DIR}/.lore.env but no API key set." >&2
-    echo "Add your key to ${LORE_CONFIG_DIR}/.lore.env.local (export LORE_API_KEY=...) or run /lore-setup." >&2
+    echo "Add your key to ${LORE_CONFIG_DIR}/.lore.env.local (export LORE_API_KEY=...) or run the lore-setup skill." >&2
     exit 1
     ;;
   incomplete)
     echo "Error: Lore config at ${LORE_CONFIG_DIR}/.lore.env is missing LORE_APP or LORE_NAMESPACE." >&2
-    echo "Re-run /lore-setup to fix it." >&2
+    echo "Re-run the lore-setup skill to fix it." >&2
     exit 1
     ;;
   *)

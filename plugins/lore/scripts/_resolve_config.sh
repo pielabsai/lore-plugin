@@ -18,9 +18,9 @@
 #      a single self-contained file. Its sibling .lore.env.local, if any, is
 #      also sourced.
 #
-#   2. Otherwise, walk up from $start-dir (default: $CLAUDE_PROJECT_DIR or
-#      $PWD) looking for a `.lore.env` file. Walk stops at $HOME — we never
-#      traverse above the user's home directory.
+#   2. Otherwise, walk up from $start-dir (default: $CODEX_PROJECT_DIR, then
+#      $CLAUDE_PROJECT_DIR, then $PWD) looking for a `.lore.env` file. Walk
+#      stops at $HOME — we never traverse above the user's home directory.
 #
 #      When .lore.env is found, its sibling .lore.env.local (if present) is
 #      sourced afterwards, so LORE_API_KEY (which lives in the gitignored
@@ -67,7 +67,7 @@ resolve_lore_config() {
   LORE_CONFIG_STATUS="missing"
   LORE_CONFIG_DIR=""
 
-  local start_dir="${1:-${CLAUDE_PROJECT_DIR:-$PWD}}"
+  local start_dir="${1:-${CODEX_PROJECT_DIR:-${CLAUDE_PROJECT_DIR:-$PWD}}}"
 
   if [[ -n "${LORE_CONFIG_FILE:-}" ]]; then
     # Explicit override — power-user escape hatch.
